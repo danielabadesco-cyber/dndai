@@ -291,11 +291,12 @@ export default function ProgressionPage() {
 
   function chooseOutcome(type: ProgressionOutcome['type']) {
     if (!campaign || !currentEntry) return;
+    const chosenOutcome = currentEntry.outcomes.find(o => o.type === type);
     const chosen = { ...currentEntry, chosen: type };
     const history = [...(campaign.progressionHistory || []), chosen];
     save({ ...campaign, progressionHistory: history });
     setCurrentEntry(null);
-    setSituation('');
+    setSituation(chosenOutcome?.nextSteps || '');
     setPlayerActions('');
     setDiceRoll('');
     setView('input');
@@ -315,7 +316,7 @@ export default function ProgressionPage() {
     const history = [...(campaign.progressionHistory || []), chosen];
     save({ ...campaign, progressionHistory: history });
     setCurrentEntry(null);
-    setSituation('');
+    setSituation(customNext.trim() || '');
     setPlayerActions('');
     setDiceRoll('');
     setCustomText('');
