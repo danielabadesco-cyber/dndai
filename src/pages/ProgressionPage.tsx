@@ -292,7 +292,6 @@ export default function ProgressionPage() {
   function generateSituation() {
     if (!campaign) return;
     const storyline = campaign.storylineBase || '';
-    const world = campaign.campaignBase.worldDescription;
     const conflict = campaign.campaignBase.mainConflict;
     const hist = campaign.progressionHistory || [];
     const last = hist.length > 0 ? hist[hist.length - 1] : null;

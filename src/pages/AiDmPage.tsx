@@ -30,10 +30,6 @@ function getSessions(): AiDmSession[] {
   return data ? JSON.parse(data) : [];
 }
 
-function getSession(id: string): AiDmSession | undefined {
-  return getSessions().find(s => s.id === id);
-}
-
 function saveSession(session: AiDmSession) {
   const sessions = getSessions();
   const idx = sessions.findIndex(s => s.id === session.id);
