@@ -116,19 +116,78 @@ export default function NewCampaignPage() {
     return list[Math.floor(Math.random() * list.length)];
   }
 
+  function pick<T>(arr: T[]): T {
+    return arr[Math.floor(Math.random() * arr.length)];
+  }
+
+  function pickUnique<T>(arr: T[], count: number): T[] {
+    const shuffled = [...arr].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, count);
+  }
+
   async function handleAiGenerate() {
     if (!aiIdea.trim()) return;
     setAiLoading(true);
 
     await new Promise(r => setTimeout(r, 1500));
 
-    const tones = ['Epic high fantasy', 'Dark and gritty', 'Lighthearted adventure'];
+    const idea = aiIdea.trim();
+
+    const allTones = [
+      'Epic high fantasy', 'Dark and gritty', 'Lighthearted adventure',
+      'Horror and suspense', 'Political intrigue', 'Survival and exploration',
+      'Mystery and investigation', 'War and conquest', 'Mythological epic',
+      'Steampunk adventure', 'Cosmic horror', 'Heist and deception',
+      'Revenge saga', 'Coming of age', 'Pirate adventure',
+    ];
+
+    const allWorlds = [
+      `A vast continent where ancient empires have crumbled, leaving behind ruins filled with forgotten magic and dangerous relics tied to "${idea}".`,
+      `A sprawling underground kingdom where sunlight is a myth and bioluminescent fungi light the way. "${idea}" shapes every aspect of survival here.`,
+      `A chain of floating islands above an endless storm. Airships connect the settlements, and "${idea}" is woven into the very winds.`,
+      `A frozen wasteland where warmth is currency and fire is sacred. The concept of "${idea}" drives every faction's struggle to survive.`,
+      `A cursed forest that shifts and changes every night. Those who enter seeking "${idea}" rarely return the same.`,
+      `A coastal city built on the back of a sleeping titan. "${idea}" is central to the prophecy that the titan will one day wake.`,
+      `A desert realm where oases hold hidden civilizations. "${idea}" is the key to finding water — and power.`,
+      `A war-torn realm of shattered kingdoms, where "${idea}" is both the cause of the war and the only hope for peace.`,
+      `A magical academy on the edge of reality, where students study "${idea}" and the boundaries between worlds grow thin.`,
+      `A realm where the dead walk alongside the living. "${idea}" determines whether spirits are allies or enemies.`,
+    ];
+
+    const allScenarios = [
+      `The party meets in a tavern that's on fire. A stranger throws them a map and says one word before dying: "${idea}".`,
+      `The players wake up in a dungeon with no memory of how they got there. The walls are covered in symbols related to "${idea}".`,
+      `A festival is interrupted when the sky cracks open. Something falls from above, and it's connected to "${idea}".`,
+      `The party is hired to protect a caravan, but the cargo is alive — and it whispers about "${idea}".`,
+      `A bounty has been placed on something called "${idea}". Every faction in the region wants it, and the party just stumbled onto a clue.`,
+      `The party's village is destroyed overnight. The only survivor says a single name connected to "${idea}" before collapsing.`,
+      `A dying king summons the party. His last wish involves "${idea}", and refusing means war.`,
+      `The ground splits open in the town square, revealing ancient stairs going down. Carved into the first step: "${idea}".`,
+      `The party finds a ship washed ashore with no crew. The captain's log mentions "${idea}" on every page.`,
+      `A child appears claiming to be from the future. They say "${idea}" will destroy everything unless the party acts now.`,
+    ];
+
+    const allConflicts = [
+      'An ancient sealed evil is breaking free, and its corruption spreads faster each day.',
+      'Two powerful factions are on the brink of war, and both sides want the party to join them.',
+      'A plague is spreading that turns people into monsters. The cure exists, but someone is hoarding it.',
+      'A god has gone silent, and without their blessing, the land is dying. Someone — or something — has taken their place.',
+      'A powerful artifact has been shattered into pieces, and every fragment warps reality around it.',
+      'A secret society is rewriting history using forbidden magic. The party discovers the truth by accident.',
+      'The barrier between worlds is failing. Creatures from the other side are pouring through.',
+      'A tyrant has united the enemy forces under one banner. The resistance is losing and desperate.',
+      'An ancient prophecy is coming true, but its wording is ambiguous — it could mean salvation or destruction.',
+      'Someone is assassinating leaders one by one. The pattern points to something bigger than politics.',
+    ];
+
+    const tones = pickUnique(allTones, 3);
+
     const options: AiOption[] = tones.map((tone, i) => ({
-      name: generateTitle(aiIdea, i),
+      name: generateTitle(idea, i),
       base: {
-        worldDescription: `A world shaped by the concept of "${aiIdea.trim()}". ${i === 0 ? 'Vast kingdoms and ancient magic define this realm.' : i === 1 ? 'Shadows and moral ambiguity permeate every corner.' : 'Wonder and whimsy await around every corner.'}`,
-        startingScenario: `The adventurers find themselves drawn into events surrounding "${aiIdea.trim()}". ${i === 0 ? 'A call to heroism echoes across the land.' : i === 1 ? 'A mysterious disappearance sets dark events in motion.' : 'A chance encounter leads to an unexpected quest.'}`,
-        mainConflict: `${i === 0 ? 'An ancient evil awakens, threatening to engulf the world in darkness.' : i === 1 ? 'Powerful factions wage a hidden war, and trust is a scarce commodity.' : 'A cosmic puzzle must be solved before reality itself unravels in amusing ways.'}`,
+        worldDescription: pick(allWorlds),
+        startingScenario: pick(allScenarios),
+        mainConflict: pick(allConflicts),
         tone,
       }
     }));
