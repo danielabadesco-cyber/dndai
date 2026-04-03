@@ -14,6 +14,10 @@ export default function Layout({ children, title, showBack }: LayoutProps) {
 
   return (
     <div className="min-h-[100dvh] flex flex-col">
+      {/* Floating green particles */}
+      <div className="green-particles">
+        <span /><span /><span /><span /><span /><span />
+      </div>
       <header className="sticky top-0 z-10 flex items-center gap-3 px-4 py-3"
         style={{ backgroundColor: 'var(--color-surface)', borderBottom: '2px solid var(--color-accent)', color: 'var(--color-accent)' }}>
         {!isHome && (
