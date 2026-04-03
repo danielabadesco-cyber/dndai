@@ -289,17 +289,96 @@ export default function ProgressionPage() {
     setView('results');
   }
 
+  function generateSituation() {
+    if (!campaign) return;
+    const storyline = campaign.storylineBase || '';
+    const world = campaign.campaignBase.worldDescription;
+    const conflict = campaign.campaignBase.mainConflict;
+    const hist = campaign.progressionHistory || [];
+    const last = hist.length > 0 ? hist[hist.length - 1] : null;
+    const lastChosen = last ? last.outcomes.find(o => o.type === last.chosen) : null;
+
+    // Location pools
+    const locations = [
+      'a narrow cave passage lit by glowing mushrooms',
+      'the ruins of an old temple, half-sunken into mud',
+      'a dense forest clearing where the trees seem to watch',
+      'a crumbling bridge over a bottomless chasm',
+      'a bustling underground market full of shady merchants',
+      'an abandoned fortress with scorch marks on the walls',
+      'a frozen lake with something moving beneath the ice',
+      'a throne room covered in dust and cobwebs',
+      'a swamp where the fog is so thick you can barely see',
+      'a cliffside path with strong winds threatening to push everyone off',
+      'a library where the books whisper when you get close',
+      'a graveyard where the ground is freshly disturbed',
+      'a tavern that has been barricaded from the inside',
+      'a mining tunnel that keeps branching deeper underground',
+      'a battlefield littered with old weapons and bones',
+    ];
+
+    // What's happening pools
+    const events = [
+      'Strange noises echo from deeper inside. Something is moving.',
+      'The air suddenly gets cold. Breath turns to mist.',
+      'A group of enemies blocks the path ahead. They haven\'t noticed the party yet.',
+      'The ground begins to shake. Dust falls from above.',
+      'A wounded stranger stumbles toward the party, begging for help.',
+      'A trap is spotted just in time — the area is rigged.',
+      'An eerie silence falls. Too quiet. Something is wrong.',
+      'A locked door stands before the party. Behind it, voices argue.',
+      'The party finds a campsite recently abandoned. The fire is still warm.',
+      'A creature watches from the shadows, not attacking — just waiting.',
+      'An ally calls out from somewhere ahead. They sound scared.',
+      'A magical barrier blocks the way forward, humming with energy.',
+      'The environment starts changing — walls shift, paths rearrange.',
+      'Something valuable glints in a dangerous spot. Getting it won\'t be easy.',
+      'A rival group arrives at the same location. Tension is immediate.',
+    ];
+
+    // Build the situation from context
+    let generated = '';
+
+    if (lastChosen) {
+      // Continue from previous outcome
+      const continuations = [
+        `After what just happened, the party pushes forward. They arrive at ${pick(locations)}.`,
+        `The aftermath settles. The party moves on and finds themselves at ${pick(locations)}.`,
+        `With the last encounter behind them, the party continues. They reach ${pick(locations)}.`,
+      ];
+      generated = `${pick(continuations)} ${pick(events)}`;
+    } else {
+      // First entry — use campaign world and conflict to set the scene
+      generated = `The party is at ${pick(locations)}. ${pick(events)} This all ties back to "${conflict.slice(0, 80)}".`;
+    }
+
+    // Add storyline flavor if available
+    if (storyline && Math.random() > 0.5) {
+      const flavors = [
+        `Something about this feels connected to the storyline — a familiar pattern emerging.`,
+        `The situation echoes themes from the storyline. The stakes are rising.`,
+        `This mirrors a turning point. What happens next could change everything.`,
+      ];
+      generated += ' ' + pick(flavors);
+    }
+
+    setSituation(generated);
+  }
+
   function chooseOutcome(type: ProgressionOutcome['type']) {
     if (!campaign || !currentEntry) return;
-    const chosenOutcome = currentEntry.outcomes.find(o => o.type === type);
     const chosen = { ...currentEntry, chosen: type };
     const history = [...(campaign.progressionHistory || []), chosen];
-    save({ ...campaign, progressionHistory: history });
+    const updatedCampaign = { ...campaign, progressionHistory: history };
+    save(updatedCampaign);
     setCurrentEntry(null);
-    setSituation(chosenOutcome?.nextSteps || '');
     setPlayerActions('');
     setDiceRoll('');
+    // Auto-generate next situation based on what just happened
+    setSituation('');
     setView('input');
+    // Delay so state updates first, then generate
+    setTimeout(() => generateSituation(), 100);
   }
 
   function submitCustomOutcome() {
@@ -314,15 +393,17 @@ export default function ProgressionPage() {
     // Auto-choose the custom outcome
     const chosen = { ...updated, chosen: 'custom' as const };
     const history = [...(campaign.progressionHistory || []), chosen];
-    save({ ...campaign, progressionHistory: history });
+    const updatedCampaign = { ...campaign, progressionHistory: history };
+    save(updatedCampaign);
     setCurrentEntry(null);
-    setSituation(customNext.trim() || '');
+    setSituation('');
     setPlayerActions('');
     setDiceRoll('');
     setCustomText('');
     setCustomNext('');
     setShowCustom(false);
     setView('input');
+    setTimeout(() => generateSituation(), 100);
   }
 
   function rollD20() {
@@ -439,14 +520,23 @@ export default function ProgressionPage() {
           )}
 
           <div>
-            <label className="block text-sm font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--color-text-muted)' }}>
-              What's happening?
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-sm font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+                What's happening?
+              </label>
+              <button
+                onClick={generateSituation}
+                className="text-xs px-3 py-1 rounded font-bold"
+                style={{ backgroundColor: 'var(--color-accent)', color: 'var(--color-bg)' }}
+              >
+                Auto-Generate
+              </button>
+            </div>
             <textarea
               value={situation}
               onChange={e => setSituation(e.target.value)}
               rows={3}
-              placeholder="The party enters a dark cave and hears growling from the shadows..."
+              placeholder="Type your own or hit Auto-Generate..."
             />
           </div>
 
