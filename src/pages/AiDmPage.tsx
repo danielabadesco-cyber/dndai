@@ -346,6 +346,142 @@ function generateOutcome(
     };
   }
 
+  // TACTICAL / NON-ATTACK ACTIONS
+  const a = action.toLowerCase();
+  const isScout = /look|count|scan|observe|check|how many|assess|study|examine|inspect|watch/.test(a);
+  const isReposition = /move|position|station|distance|range|back up|step back|retreat|get behind|climb|high ground|flank|circle/.test(a);
+  const isRun = /run away|flee|escape|sprint|dash away|get out|retreat.*away|bolt/.test(a);
+  const isHide = /hide|stealth|sneak|stay.*quiet|blend|camouflage|stay.*shadow|crouch/.test(a);
+  const isProtect = /shield|protect|guard|cover|defend|block.*for|stand.*front|take.*hit/.test(a);
+  const isTactical = isScout || isReposition || isRun || isHide || isProtect;
+
+  if (isTactical) {
+    const eMult = DIFF_MULT[difficulty];
+
+    if (isScout) {
+      // Scouting — always succeeds but roll determines quality of info
+      if (roll >= 15) {
+        return {
+          text: `${charName} ${action}. Excellent awareness! ${charName} spots exactly ${pick([
+            `${Math.ceil(Math.random() * 3 + 1)} enemies and a weak point in their formation`,
+            `a vulnerability — the ${enemyName} has an exposed flank on the left side`,
+            `the ${enemyName}'s attack pattern — they wind up slowly before striking`,
+            `an environmental advantage — a ledge above, unstable ground beneath the ${enemyName}`,
+          ])}. The next attack from the party gets a tactical advantage.`,
+          damage: 0, enemyDamage: 0,
+        };
+      }
+      if (roll >= 8) {
+        return {
+          text: `${charName} ${action}. ${charName} gets a decent read on the situation — ${pick([
+            `the ${enemyName} looks like it's been wounded before, one side is weaker`,
+            `there are no reinforcements coming, it's just what's here`,
+            `the terrain could be used to the party's advantage if they're creative`,
+          ])}. Useful info.`,
+          damage: 0, enemyDamage: 0,
+        };
+      }
+      const eDmg = Math.round(2 * eMult);
+      return {
+        text: `${charName} ${action} but gets distracted. The ${enemyName} notices and takes a quick swipe — ${eDmg} damage to ${charName}! At least ${charName} learned the ${enemyName} is aggressive.`,
+        damage: 0, enemyDamage: eDmg, targetChar: charName,
+      };
+    }
+
+    if (isReposition) {
+      if (roll >= 12) {
+        return {
+          text: `${charName} ${action}. Smart move! ${charName} ${pick([
+            `gets to a better position — they now have clear line of sight and cover`,
+            `finds high ground, gaining advantage on the next attack`,
+            `flanks the ${enemyName} — the enemy hasn't noticed the new angle yet`,
+            `creates distance, perfect for ranged attacks or spells`,
+          ])}. ${charName} is in a much better spot now.`,
+          damage: 0, enemyDamage: 0,
+        };
+      }
+      if (roll >= 6) {
+        return {
+          text: `${charName} ${action}. They move, but it's not perfect — ${pick([
+            `the ${enemyName} tracks the movement and adjusts`,
+            `the new position is okay but not ideal, still partially exposed`,
+            `${charName} gets there but stumbles slightly, losing a moment`,
+          ])}. Partial improvement.`,
+          damage: 0, enemyDamage: 0,
+        };
+      }
+      const eDmg = Math.round(4 * eMult);
+      return {
+        text: `${charName} ${action} but the ${enemyName} is faster! It cuts off ${charName}'s path and strikes — ${eDmg} damage! ${charName} is stuck in a bad position.`,
+        damage: 0, enemyDamage: eDmg, targetChar: charName,
+      };
+    }
+
+    if (isRun) {
+      if (roll >= 15) {
+        return {
+          text: `${charName} ${action}. ${charName} is fast! They sprint away from the ${enemyName} and reach safety. The ${enemyName} can't keep up. ${charName} is out of immediate danger and can rejoin the fight on their own terms.`,
+          damage: 0, enemyDamage: 0,
+        };
+      }
+      if (roll >= 8) {
+        const eDmg = Math.round(2 * eMult);
+        return {
+          text: `${charName} ${action}. They get some distance but the ${enemyName} clips them as they turn — ${eDmg} damage! ${charName} is further away now but took a hit doing it.`,
+          damage: 0, enemyDamage: eDmg, targetChar: charName,
+        };
+      }
+      const eDmg = Math.round(6 * eMult);
+      return {
+        text: `${charName} ${action} but trips! The ${enemyName} catches up and punishes the failed escape — ${eDmg} damage! ${charName} is on the ground and vulnerable. Turning your back on the ${enemyName} was risky.`,
+        damage: 0, enemyDamage: eDmg, targetChar: charName,
+      };
+    }
+
+    if (isHide) {
+      const stealthBonus = charClass === 'Rogue' ? 3 : 0;
+      if (roll + stealthBonus >= 14) {
+        return {
+          text: `${charName} ${action}. ${charClass === 'Rogue' ? 'Natural instinct kicks in — ' : ''}${charName} vanishes into the shadows. The ${enemyName} loses track of them completely. ${charName}'s next attack will be a surprise strike!`,
+          damage: 0, enemyDamage: 0,
+        };
+      }
+      if (roll + stealthBonus >= 8) {
+        return {
+          text: `${charName} ${action}. They find some cover but the ${enemyName} knows roughly where they are — ${pick([
+            `it watches the area suspiciously`,
+            `it sniffs the air, hunting`,
+            `it heard the last footstep`,
+          ])}. Partially hidden.`,
+          damage: 0, enemyDamage: 0,
+        };
+      }
+      const eDmg = Math.round(3 * eMult);
+      return {
+        text: `${charName} ${action} but knocks something over! The ${enemyName} spots them immediately and charges — ${eDmg} damage! Stealth failed completely.`,
+        damage: 0, enemyDamage: eDmg, targetChar: charName,
+      };
+    }
+
+    if (isProtect) {
+      if (roll >= 10) {
+        return {
+          text: `${charName} ${action}. ${charName} raises their guard ${pick([
+            `and braces for impact — any attack aimed at an ally will hit ${charName} instead, but at reduced damage`,
+            `and creates a defensive wall. The ${enemyName} will have a harder time hitting the party`,
+            `shielding the group. ${charName}'s defensive stance absorbs the next incoming hit`,
+          ])}. A selfless move.`,
+          damage: 0, enemyDamage: 0,
+        };
+      }
+      const eDmg = Math.round(3 * eMult);
+      return {
+        text: `${charName} ${action} but the ${enemyName} is too fast — it gets through ${charName}'s defense and lands a hit for ${eDmg}! The guard breaks.`,
+        damage: 0, enemyDamage: eDmg, targetChar: charName,
+      };
+    }
+  }
+
   // NAT 20
   if (roll === 20) {
     const dmg = 14 + classBonus + powerBonus + (charClass === 'Rogue' ? 6 : 0);
@@ -1207,12 +1343,12 @@ export default function AiDmPage() {
                   {/* Action input */}
                   <div>
                     <textarea value={playerAction} onChange={e => setPlayerAction(e.target.value)} rows={2}
-                      placeholder={`What does ${aliveChars.find(c => c.id === activeChar)?.name || 'the player'} do?`} />
+                      placeholder="Attack, reposition, scout, hide, run, protect an ally... anything goes!" />
                   </div>
                   <button onClick={handleRollAndResolve} disabled={!playerAction.trim() || rolling}
                     className="w-full py-3 font-bold rounded-lg"
                     style={{ backgroundColor: playerAction.trim() && !rolling ? 'var(--color-accent)' : 'var(--color-border)', color: 'var(--color-bg)' }}>
-                    {rolling ? `Rolling... ${diceRoll}` : 'Roll d20 & Act'}
+                    {rolling ? `Rolling... ${diceRoll}` : 'Roll d20 & Do It'}
                   </button>
                 </>
               )}
