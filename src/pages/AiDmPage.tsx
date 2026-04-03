@@ -5,6 +5,7 @@ import Layout from '../components/Layout';
 type Phase = 'setup' | 'characters' | 'playing' | 'ended';
 type CampaignLength = 'short' | 'regular' | 'long';
 type Difficulty = 'easy' | 'medium' | 'hard';
+type EncounterType = 'combat' | 'shop' | 'puzzle' | 'quest' | 'rest';
 
 interface PlayerChar {
   id: string;
@@ -42,6 +43,10 @@ interface AiDmSession {
   currentEnemyHp: number;
   currentEnemyMaxHp: number;
   currentEnemy: string;
+  currentEnemyDmg: number;
+  encounterType: EncounterType;
+  actionsSinceEnemyTurn: number;
+  gold: number;
   potions: number;
   createdAt: string;
 }
@@ -53,13 +58,21 @@ function getSessions(): AiDmSession[] {
     const data = localStorage.getItem(AIDM_KEY);
     if (!data) return [];
     const sessions = JSON.parse(data);
-    // Validate sessions have the new format (characters array)
-    return sessions.filter((s: AiDmSession) => Array.isArray(s.characters));
+    // Validate sessions have the new format fields
+    return sessions.filter(
+      (s: AiDmSession) =>
+        Array.isArray(s.characters) &&
+        s.encounterType !== undefined &&
+        s.gold !== undefined &&
+        s.actionsSinceEnemyTurn !== undefined &&
+        s.currentEnemyDmg !== undefined
+    );
   } catch {
     localStorage.removeItem(AIDM_KEY);
     return [];
   }
 }
+
 function saveSession(session: AiDmSession) {
   const sessions = getSessions();
   const idx = sessions.findIndex(s => s.id === session.id);
@@ -67,9 +80,11 @@ function saveSession(session: AiDmSession) {
   else sessions.push(session);
   localStorage.setItem(AIDM_KEY, JSON.stringify(sessions));
 }
+
 function deleteSession(id: string) {
   localStorage.setItem(AIDM_KEY, JSON.stringify(getSessions().filter(s => s.id !== id)));
 }
+
 function pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)]; }
 
 // ---- CLASSES ----
@@ -129,6 +144,32 @@ const discoveryPool = [
   'An abandoned supply cart sits here.', 'A weapon rack still has gear.',
 ];
 
+// ---- NON-COMBAT ENCOUNTERS ----
+const shopEncounters = [
+  { scene: 'A traveling merchant has set up a makeshift stall. They sell potions (10 gold), weapons, and mysterious trinkets. "Welcome, adventurers! What catches your eye?"' },
+  { scene: 'The party finds an underground bazaar lit by lanterns. Vendors hawk rare items and stolen goods. A shady dealer whispers, "I have something special..."' },
+  { scene: 'A friendly dwarf runs a forge here. "Need repairs? Upgrades? Potions? I got it all — for the right price." He eyes the party\'s gold pouch.' },
+];
+
+const puzzleEncounters = [
+  { scene: 'A massive stone door blocks the path. Three symbols are carved into it — a sun, a moon, and a star. Three levers sit on the wall. The wrong combination could be deadly.', hint: 'Look at the shadows on the floor for clues.' },
+  { scene: 'The floor is a grid of tiles. Some glow faintly. A skeleton lies crumpled on a dark tile — clearly someone chose wrong. The exit is on the other side.', hint: 'Only step on glowing tiles.' },
+  { scene: 'A riddle is inscribed on the wall: "I have cities but no houses, forests but no trees, water but no fish. What am I?" A door waits for the answer.', hint: 'Think about what represents these things without being real.' },
+  { scene: 'Four colored potions sit on a table. A note reads: "One heals, one poisons, one empowers, one does nothing. Choose wisely." The party needs healing.', hint: 'The green one smells like herbs.' },
+];
+
+const questEncounters = [
+  { scene: 'A village elder approaches the party. "Please, our children were taken into the forest by something... dark. We have gold — 20 pieces if you bring them back."', reward: 20 },
+  { scene: 'A wounded knight begs for help. "My squad was ambushed. If you can retrieve our banner from the enemy camp nearby, the kingdom will reward you — 25 gold."', reward: 25 },
+  { scene: 'A crying merchant says their cart was robbed. "The thieves went that way! Recover my goods and I\'ll give you potions and 15 gold."', reward: 15 },
+];
+
+const restEncounters = [
+  { scene: 'The party finds a safe campsite by a stream. The fire crackles warmly. Everyone rests and recovers.', heal: 5 },
+  { scene: 'A kind hermit offers shelter in their hut. "Rest here, travelers. You look like you need it." Hot soup and rest soothe the wounds.', heal: 8 },
+  { scene: 'The party discovers a hidden hot spring. The magical waters soothe their wounds. Everyone feels renewed.', heal: 6 },
+];
+
 // ---- STUPID ACTION DETECTION ----
 function isStupidAction(action: string, _situation: string): boolean {
   const a = action.toLowerCase();
@@ -153,8 +194,37 @@ function isCleverAction(action: string): boolean {
   return cleverPatterns.some(p => p.test(a));
 }
 
+// ---- ENCOUNTER TYPE DETERMINATION ----
+function determineEncounterType(
+  turnNum: number,
+  maxTurns: number,
+  lastEncounterType: EncounterType | null
+): EncounterType {
+  // First and last turns always combat
+  if (turnNum === 1 || turnNum >= maxTurns) return 'combat';
+  // Near the end (boss territory) always combat
+  const progress = turnNum / maxTurns;
+  if (progress >= 0.85) return 'combat';
+  // Never two non-combats in a row
+  if (lastEncounterType !== null && lastEncounterType !== 'combat') return 'combat';
+  // ~35% chance of non-combat
+  if (Math.random() < 0.35) {
+    const roll = Math.random();
+    if (roll < 0.25) return 'shop';
+    if (roll < 0.5) return 'puzzle';
+    if (roll < 0.75) return 'quest';
+    return 'rest';
+  }
+  return 'combat';
+}
+
 // ---- SCENE GENERATION ----
-function generateScene(session: AiDmSession): { scene: string; enemy: typeof enemyPool[0] } {
+function generateScene(session: AiDmSession): {
+  scene: string;
+  enemy: typeof enemyPool[0];
+  encounterType: EncounterType;
+  nonCombatData?: { shopEncounter?: typeof shopEncounters[0]; puzzleEncounter?: typeof puzzleEncounters[0]; questEncounter?: typeof questEncounters[0]; restEncounter?: typeof restEncounters[0] };
+} {
   const turnNum = session.turns.filter(t => t.resolved).length + 1;
   const progress = turnNum / session.maxTurns;
   const lastTurn = session.turns.length > 0 ? session.turns[session.turns.length - 1] : null;
@@ -162,6 +232,9 @@ function generateScene(session: AiDmSession): { scene: string; enemy: typeof ene
   const location = pick(locationPool);
   const aliveNames = session.characters.filter(c => c.alive).map(c => c.name).join(', ');
   const deadNames = session.characters.filter(c => !c.alive).map(c => c.name);
+
+  const lastEncounterType = session.encounterType ?? null;
+  const encounterType = determineEncounterType(turnNum, session.maxTurns, lastEncounterType);
 
   // Final boss
   if (progress >= 0.85) {
@@ -174,9 +247,31 @@ function generateScene(session: AiDmSession): { scene: string; enemy: typeof ene
     return {
       scene: `FINAL BOSS — Turn ${turnNum}/${session.maxTurns}. ${connection}${deadNote}${boss.desc} This is connected to "${session.storyline.slice(0, 60)}". Everything leads to this moment.`,
       enemy: { ...boss, hp: scaledHp },
+      encounterType: 'combat',
     };
   }
 
+  // Non-combat encounters
+  if (encounterType !== 'combat') {
+    const enemy = pick(enemyPool); // Placeholder enemy (not used in display)
+    if (encounterType === 'shop') {
+      const shopData = pick(shopEncounters);
+      return { scene: shopData.scene, enemy, encounterType: 'shop', nonCombatData: { shopEncounter: shopData } };
+    }
+    if (encounterType === 'puzzle') {
+      const puzzleData = pick(puzzleEncounters);
+      return { scene: puzzleData.scene + ` Hint: ${puzzleData.hint}`, enemy, encounterType: 'puzzle', nonCombatData: { puzzleEncounter: puzzleData } };
+    }
+    if (encounterType === 'quest') {
+      const questData = pick(questEncounters);
+      return { scene: questData.scene, enemy, encounterType: 'quest', nonCombatData: { questEncounter: questData } };
+    }
+    // rest
+    const restData = pick(restEncounters);
+    return { scene: restData.scene + ` Each surviving character heals ${restData.heal} HP.`, enemy, encounterType: 'rest', nonCombatData: { restEncounter: restData } };
+  }
+
+  // Normal combat encounter
   const enemy = pick(enemyPool);
   const scaledHp = Math.round(enemy.hp * (1 + progress * 0.5) * (session.difficulty === 'hard' ? 1.3 : session.difficulty === 'easy' ? 0.7 : 1));
   const scaledDmg = Math.round(enemy.dmg * DIFF_MULT[session.difficulty]);
@@ -200,6 +295,7 @@ function generateScene(session: AiDmSession): { scene: string; enemy: typeof ene
   return {
     scene: `${connection} ${enemy.desc}.${deadNote}${discovery}${storyHook}`.trim(),
     enemy: { ...enemy, hp: scaledHp, dmg: scaledDmg },
+    encounterType: 'combat',
   };
 }
 
@@ -301,6 +397,29 @@ function generateOutcome(
   };
 }
 
+// ---- ENEMY ATTACK HELPER ----
+function generateEnemyAttack(
+  enemyName: string,
+  enemyDmg: number,
+  targetName: string,
+  isSurprise: boolean
+): { text: string; damage: number } {
+  const dmg = Math.max(1, enemyDmg + Math.floor(Math.random() * 4) - 1);
+  if (isSurprise) {
+    return {
+      text: `SURPRISE ATTACK! The ${enemyName} is fast — it lunges at ${targetName} for ${dmg} damage before anyone can react!`,
+      damage: dmg,
+    };
+  }
+  const lines = [
+    `The ${enemyName} seizes the moment and slashes ${targetName} for ${dmg} damage!`,
+    `Counter-attack! The ${enemyName} strikes ${targetName} hard — ${dmg} damage!`,
+    `The ${enemyName} retaliates, hitting ${targetName} for ${dmg} damage!`,
+    `Monster's turn! The ${enemyName} hammers ${targetName} for ${dmg} damage!`,
+  ];
+  return { text: pick(lines), damage: dmg };
+}
+
 // ---- COMPONENT ----
 export default function AiDmPage() {
   const [phase, setPhase] = useState<Phase>('setup');
@@ -318,11 +437,13 @@ export default function AiDmPage() {
   const [session, setSession] = useState<AiDmSession | null>(null);
   const [currentScene, setCurrentScene] = useState('');
   const [playerAction, setPlayerAction] = useState('');
+  const [puzzleInput, setPuzzleInput] = useState('');
   const [activeChar, setActiveChar] = useState<string>('');
   const [diceRoll, setDiceRoll] = useState<number | null>(null);
   const [outcome, setOutcome] = useState('');
   const [rolling, setRolling] = useState(false);
-  const [lastActionType, setLastActionType] = useState('');
+  const [lastActionType, setLastActionType] = useState<'combat' | 'utility' | 'enemy' | ''>('');
+  const [questReward, setQuestReward] = useState(0);
 
   useEffect(() => { setSessions(getSessions()); }, []);
   const lengthTurns: Record<CampaignLength, number> = { short: 8, regular: 15, long: 25 };
@@ -346,17 +467,25 @@ export default function AiDmPage() {
       id: uuidv4(), storyline: storyline.trim(), length, difficulty, maxTurns,
       characters: pendingChars, turns: [],
       currentEnemyHp: 0, currentEnemyMaxHp: 0, currentEnemy: '',
+      currentEnemyDmg: 0,
+      encounterType: 'combat',
+      actionsSinceEnemyTurn: 0,
+      gold: 15,
       potions: pendingChars.length + 1,
       createdAt: new Date().toISOString(),
     };
-    const { scene, enemy } = generateScene(newSession);
+    const { scene, enemy, encounterType } = generateScene(newSession);
     newSession.currentEnemy = enemy.name;
     newSession.currentEnemyHp = enemy.hp;
     newSession.currentEnemyMaxHp = enemy.hp;
+    newSession.currentEnemyDmg = enemy.dmg;
+    newSession.encounterType = encounterType;
+    newSession.actionsSinceEnemyTurn = 0;
     newSession.turns.push({ id: uuidv4(), turn: 1, situation: scene, actions: [], resolved: false });
     doSave(newSession);
     setCurrentScene(scene);
     setActiveChar(pendingChars[0].id);
+    setQuestReward(0);
     setPhase('playing');
   }
 
@@ -368,6 +497,7 @@ export default function AiDmPage() {
     } else {
       setCurrentScene(s.turns[s.turns.length - 1]?.situation || '');
       setActiveChar(alive[0].id);
+      setQuestReward(0);
       setPhase('playing');
     }
   }
@@ -382,23 +512,73 @@ export default function AiDmPage() {
       setPhase('ended');
       return;
     }
-    const { scene, enemy } = generateScene(updated);
+    const { scene, enemy, encounterType } = generateScene(updated);
     updated.currentEnemy = enemy.name;
     updated.currentEnemyHp = enemy.hp;
     updated.currentEnemyMaxHp = enemy.hp;
+    updated.currentEnemyDmg = enemy.dmg;
+    updated.encounterType = encounterType;
+    updated.actionsSinceEnemyTurn = 0;
     updated.turns.push({ id: uuidv4(), turn: turns.filter(t => t.resolved).length + 1, situation: scene, actions: [], resolved: false });
+
+    // Auto-apply rest healing when advancing into a rest encounter
+    if (encounterType === 'rest') {
+      const restData = restEncounters.find(r => scene.includes(r.scene)) ?? restEncounters[0];
+      const healAmt = restData.heal;
+      updated.characters = updated.characters.map(c =>
+        c.alive ? { ...c, hp: Math.min(c.maxHp, c.hp + healAmt) } : c
+      );
+    }
+
     doSave(updated);
     setCurrentScene(scene);
     setOutcome('');
     setPlayerAction('');
+    setPuzzleInput('');
     setDiceRoll(null);
     setLastActionType('');
+    setQuestReward(0);
+  }
+
+  // ---- ENEMY TURN (triggered after N player actions in combat) ----
+  function maybeDoEnemyTurn(updated: AiDmSession, forceAttack: boolean): { updated: AiDmSession; enemyText: string | null } {
+    if (updated.encounterType !== 'combat' || updated.currentEnemyHp <= 0) return { updated, enemyText: null };
+
+    const actionsThreshold = updated.difficulty === 'hard' ? 2 : 3;
+    const isSurpriseChance = Math.random() < 0.2;
+
+    if (!forceAttack && !isSurpriseChance && updated.actionsSinceEnemyTurn < actionsThreshold) {
+      return { updated, enemyText: null };
+    }
+
+    const aliveChars = updated.characters.filter(c => c.alive);
+    if (aliveChars.length === 0) return { updated, enemyText: null };
+
+    const target = pick(aliveChars);
+    const { text, damage } = generateEnemyAttack(
+      updated.currentEnemy,
+      updated.currentEnemyDmg,
+      target.name,
+      isSurpriseChance && !forceAttack
+    );
+
+    target.hp = Math.max(0, target.hp - damage);
+    if (target.hp === 0) {
+      target.alive = false;
+    }
+    updated.actionsSinceEnemyTurn = 0;
+
+    const fullText = target.hp === 0
+      ? text + ` ${target.name} HAS FALLEN!`
+      : text;
+
+    return { updated, enemyText: fullText };
   }
 
   // ---- QUICK ACTIONS ----
   function quickAction(type: string) {
     if (!session) return;
-    const updated = { ...session };
+    const updated = { ...session, characters: session.characters.map(c => ({ ...c })) };
     const char = updated.characters.find(c => c.id === activeChar);
     if (!char || !char.alive) return;
     const turn = updated.turns[updated.turns.length - 1];
@@ -436,13 +616,25 @@ export default function AiDmPage() {
       }
     }
 
+    updated.actionsSinceEnemyTurn += 1;
     turn.actions.push({ action: type, character: char.name, diceRoll: 0, outcome: text, type: 'utility' });
-    doSave(updated);
-    setOutcome(text);
-    setLastActionType('utility');
+
+    const { updated: afterEnemy, enemyText } = maybeDoEnemyTurn(updated, updated.actionsSinceEnemyTurn >= (updated.difficulty === 'hard' ? 2 : 3));
+
+    let finalText = text;
+    if (enemyText) {
+      finalText = text + '\n\n' + enemyText;
+      turn.actions.push({ action: 'enemy_attack', character: updated.currentEnemy, diceRoll: 0, outcome: enemyText, type: 'combat' });
+      setLastActionType('enemy');
+    } else {
+      setLastActionType('utility');
+    }
+
+    doSave(afterEnemy);
+    setOutcome(finalText);
   }
 
-  // ---- MAIN ACTION ----
+  // ---- MAIN COMBAT ACTION ----
   async function handleRollAndResolve() {
     if (!session || !playerAction.trim()) return;
     const char = session.characters.find(c => c.id === activeChar);
@@ -457,8 +649,8 @@ export default function AiDmPage() {
     }
     setRolling(false);
 
-    const result = generateOutcome(finalRoll, playerAction.trim(), char.name, char.charClass, session.currentEnemy, session.currentEnemyHp, session.difficulty, false);
-    const updated = { ...session };
+    const updated = { ...session, characters: session.characters.map(c => ({ ...c })) };
+    const result = generateOutcome(finalRoll, playerAction.trim(), char.name, char.charClass, updated.currentEnemy, updated.currentEnemyHp, updated.difficulty, false);
     updated.currentEnemyHp = Math.max(0, updated.currentEnemyHp - result.damage);
 
     // Apply enemy damage to the targeted character (or active char)
@@ -474,15 +666,121 @@ export default function AiDmPage() {
       }
     }
 
+    updated.actionsSinceEnemyTurn += 1;
     const turn = updated.turns[updated.turns.length - 1];
     turn.actions.push({ action: playerAction.trim(), character: char.name, diceRoll: finalRoll, outcome: result.text, type: 'combat' });
-    doSave(updated);
-    setOutcome(result.text);
-    setLastActionType('combat');
+
+    // Check monster turn after player action
+    const shouldForce = updated.actionsSinceEnemyTurn >= (updated.difficulty === 'hard' ? 2 : 3) && updated.currentEnemyHp > 0;
+    const { updated: afterEnemy, enemyText } = maybeDoEnemyTurn(updated, shouldForce);
+
+    let finalText = result.text;
+    if (enemyText && afterEnemy.currentEnemyHp > 0) {
+      finalText = result.text + '\n\n' + enemyText;
+      turn.actions.push({ action: 'enemy_attack', character: updated.currentEnemy, diceRoll: 0, outcome: enemyText, type: 'combat' });
+      setLastActionType('enemy');
+    } else {
+      setLastActionType('combat');
+    }
+
+    doSave(afterEnemy);
+    setOutcome(finalText);
     setPlayerAction('');
   }
 
-  function getOutcomeColor(roll: number | null): string {
+  // ---- SHOP ACTIONS ----
+  function handleShopBuyPotion() {
+    if (!session) return;
+    const updated = { ...session, characters: session.characters.map(c => ({ ...c })) };
+    if (updated.gold < 10) {
+      setOutcome("Not enough gold! You need 10 gold to buy a potion.");
+      setLastActionType('utility');
+      return;
+    }
+    updated.gold -= 10;
+    updated.potions += 1;
+    const text = `Purchased a healing potion for 10 gold. You now have ${updated.potions} potions and ${updated.gold} gold remaining.`;
+    doSave(updated);
+    setOutcome(text);
+    setLastActionType('utility');
+  }
+
+  function handleShopRepair() {
+    if (!session) return;
+    const updated = { ...session, characters: session.characters.map(c => ({ ...c })) };
+    if (updated.gold < 5) {
+      setOutcome("Not enough gold! Repair costs 5 gold.");
+      setLastActionType('utility');
+      return;
+    }
+    updated.gold -= 5;
+    // Heal all alive characters 5 HP
+    updated.characters = updated.characters.map(c =>
+      c.alive ? { ...c, hp: Math.min(c.maxHp, c.hp + 5) } : c
+    );
+    const text = `Paid 5 gold for armor repairs. All characters restored 5 HP. Gold remaining: ${updated.gold}.`;
+    doSave(updated);
+    setOutcome(text);
+    setLastActionType('utility');
+  }
+
+  // ---- PUZZLE ACTION ----
+  async function handlePuzzleSolve() {
+    if (!session || !puzzleInput.trim()) return;
+    setRolling(true);
+    let finalRoll = 1;
+    for (let i = 0; i < 10; i++) {
+      finalRoll = Math.floor(Math.random() * 20) + 1;
+      setDiceRoll(finalRoll);
+      await new Promise(r => setTimeout(r, 80));
+    }
+    setRolling(false);
+
+    const updated = { ...session, characters: session.characters.map(c => ({ ...c })) };
+    const turn = updated.turns[updated.turns.length - 1];
+
+    if (finalRoll >= 10) {
+      const reward = pick([5, 8, 10]);
+      updated.gold += reward;
+      const text = `Rolled ${finalRoll}! The party solves the puzzle. "${puzzleInput.trim()}" — correct! You gain ${reward} gold and pass safely.`;
+      turn.actions.push({ action: puzzleInput.trim(), character: 'Party', diceRoll: finalRoll, outcome: text, type: 'interact' });
+      doSave(updated);
+      setOutcome(text);
+      setLastActionType('utility');
+    } else {
+      const trapDmg = Math.round(6 * DIFF_MULT[session.difficulty]);
+      const aliveChars = updated.characters.filter(c => c.alive);
+      if (aliveChars.length > 0) {
+        const victim = pick(aliveChars);
+        victim.hp = Math.max(0, victim.hp - trapDmg);
+        if (victim.hp === 0) victim.alive = false;
+        const text = `Rolled ${finalRoll}. The puzzle rejects "${puzzleInput.trim()}" — a trap springs! ${victim.name} takes ${trapDmg} damage!${!victim.alive ? ` ${victim.name} FALLS!` : ''}`;
+        turn.actions.push({ action: puzzleInput.trim(), character: 'Party', diceRoll: finalRoll, outcome: text, type: 'interact' });
+        doSave(updated);
+        setOutcome(text);
+        setLastActionType('combat');
+      }
+    }
+    setPuzzleInput('');
+  }
+
+  // ---- QUEST ACTION ----
+  function handleQuestComplete(reward: number) {
+    if (!session) return;
+    const updated = { ...session };
+    updated.gold += reward;
+    const text = `Quest complete! The party earns ${reward} gold. Total gold: ${updated.gold}.`;
+    const turn = updated.turns[updated.turns.length - 1];
+    turn.actions.push({ action: 'complete_quest', character: 'Party', diceRoll: 0, outcome: text, type: 'interact' });
+    doSave(updated);
+    setOutcome(text);
+    setLastActionType('utility');
+    setQuestReward(reward);
+  }
+
+  function getOutcomeColor(roll: number | null, type: 'combat' | 'utility' | 'enemy' | ''): string {
+    if (type === 'enemy') return '#c0392b';
+    if (type === 'utility') return 'var(--color-accent)';
     if (!roll) return 'var(--color-text-muted)';
     if (roll === 20) return '#FFD700';
     if (roll >= 13) return '#3a9e3a';
@@ -510,7 +808,7 @@ export default function AiDmPage() {
                   <div className="flex-1 cursor-pointer" onClick={() => resumeSession(s)}>
                     <p className="font-bold text-sm">{s.storyline.slice(0, 40)}...</p>
                     <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                      {s.characters.filter(c => c.alive).length}/{s.characters.length} alive &middot; Turn {s.turns.filter(t => t.resolved).length}/{s.maxTurns} &middot; {s.difficulty}
+                      {s.characters.filter(c => c.alive).length}/{s.characters.length} alive &middot; Turn {s.turns.filter(t => t.resolved).length}/{s.maxTurns} &middot; {s.difficulty} &middot; {s.gold}g
                     </p>
                   </div>
                   <button onClick={() => { deleteSession(s.id); setSessions(getSessions()); }} className="text-xs px-2 py-1" style={{ background: 'none', color: 'var(--color-danger)' }}>X</button>
@@ -645,7 +943,7 @@ export default function AiDmPage() {
               {anyAlive ? 'ADVENTURE COMPLETE' : 'TOTAL PARTY KILL'}
             </h2>
             <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-              {session.difficulty.toUpperCase()} &middot; {session.turns.filter(t => t.resolved).length} encounters
+              {session.difficulty.toUpperCase()} &middot; {session.turns.filter(t => t.resolved).length} encounters &middot; {session.gold} gold earned
             </p>
           </div>
           {session.characters.map(c => {
@@ -677,8 +975,18 @@ export default function AiDmPage() {
     const enemyDefeated = session.currentEnemyHp <= 0;
     const aliveChars = session.characters.filter(c => c.alive);
     const allDead = aliveChars.length === 0;
+    const isCombat = session.encounterType === 'combat';
+    const isShop = session.encounterType === 'shop';
+    const isPuzzle = session.encounterType === 'puzzle';
+    const isQuest = session.encounterType === 'quest';
+    const isRest = session.encounterType === 'rest';
 
     if (allDead) setTimeout(() => setPhase('ended'), 300);
+
+    // Find current quest reward from questEncounters data
+    const currentQuestData = isQuest
+      ? questEncounters.find(q => currentScene.includes(q.scene.slice(0, 40))) ?? questEncounters[0]
+      : null;
 
     return (
       <Layout title="AI DM" showBack>
@@ -687,12 +995,27 @@ export default function AiDmPage() {
           <div>
             <div className="flex justify-between text-xs mb-1" style={{ color: 'var(--color-text-muted)' }}>
               <span>Encounter {resolved + 1}/{session.maxTurns}</span>
-              <span className="uppercase text-xs font-bold" style={{ color: session.difficulty === 'hard' ? 'var(--color-danger)' : session.difficulty === 'easy' ? 'var(--color-accent)' : 'var(--color-warning)' }}>{session.difficulty}</span>
+              <div className="flex items-center gap-3">
+                <span className="font-bold" style={{ color: '#FFD700' }}>💰 {session.gold}g</span>
+                <span className="uppercase text-xs font-bold" style={{ color: session.difficulty === 'hard' ? 'var(--color-danger)' : session.difficulty === 'easy' ? 'var(--color-accent)' : 'var(--color-warning)' }}>{session.difficulty}</span>
+              </div>
             </div>
             <div className="w-full h-2 rounded-full" style={{ backgroundColor: 'var(--color-surface-light)' }}>
               <div className="h-2 rounded-full transition-all" style={{ width: `${progress * 100}%`, backgroundColor: progress >= 0.8 ? 'var(--color-danger)' : 'var(--color-accent)' }} />
             </div>
           </div>
+
+          {/* Encounter type badge */}
+          {!isCombat && (
+            <div className="text-center py-1 rounded-lg text-xs font-bold uppercase tracking-widest"
+              style={{
+                backgroundColor: isShop ? 'rgba(255,215,0,0.12)' : isPuzzle ? 'rgba(100,149,237,0.12)' : isQuest ? 'rgba(0,204,102,0.12)' : 'rgba(64,196,99,0.12)',
+                color: isShop ? '#FFD700' : isPuzzle ? 'cornflowerblue' : isQuest ? 'var(--color-accent)' : '#3a9e3a',
+                border: `1px solid ${isShop ? 'rgba(255,215,0,0.3)' : isPuzzle ? 'rgba(100,149,237,0.3)' : 'rgba(0,204,102,0.3)'}`,
+              }}>
+              {isShop ? '🛒 Shop Encounter' : isPuzzle ? '🧩 Puzzle Encounter' : isQuest ? '📜 Quest Encounter' : '🏕️ Rest Encounter'}
+            </div>
+          )}
 
           {/* Party HP */}
           <div className="space-y-1">
@@ -727,16 +1050,25 @@ export default function AiDmPage() {
             })}
           </div>
 
-          {/* Enemy HP */}
-          <div className="rounded-lg p-2" style={{ backgroundColor: 'var(--color-surface)' }}>
-            <div className="flex justify-between text-xs mb-1">
-              <span className="font-bold" style={{ color: 'var(--color-danger)' }}>{session.currentEnemy}</span>
-              <span>{session.currentEnemyHp}/{session.currentEnemyMaxHp}</span>
+          {/* Enemy HP — only in combat */}
+          {isCombat && (
+            <div className="rounded-lg p-2" style={{ backgroundColor: 'var(--color-surface)' }}>
+              <div className="flex justify-between text-xs mb-1">
+                <span className="font-bold" style={{ color: 'var(--color-danger)' }}>{session.currentEnemy}</span>
+                <div className="flex items-center gap-2">
+                  {session.actionsSinceEnemyTurn > 0 && (
+                    <span className="text-xs" style={{ color: 'var(--color-warning)' }}>
+                      ⚡ {session.difficulty === 'hard' ? 2 : 3 - session.actionsSinceEnemyTurn} actions until attack
+                    </span>
+                  )}
+                  <span>{session.currentEnemyHp}/{session.currentEnemyMaxHp}</span>
+                </div>
+              </div>
+              <div className="w-full h-2 rounded-full" style={{ backgroundColor: 'var(--color-surface-light)' }}>
+                <div className="h-2 rounded-full transition-all" style={{ width: `${(session.currentEnemyHp / session.currentEnemyMaxHp) * 100}%`, backgroundColor: '#c0392b' }} />
+              </div>
             </div>
-            <div className="w-full h-2 rounded-full" style={{ backgroundColor: 'var(--color-surface-light)' }}>
-              <div className="h-2 rounded-full transition-all" style={{ width: `${(session.currentEnemyHp / session.currentEnemyMaxHp) * 100}%`, backgroundColor: '#c0392b' }} />
-            </div>
-          </div>
+          )}
 
           {/* Scene */}
           <div className="rounded-lg p-3" style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
@@ -747,52 +1079,143 @@ export default function AiDmPage() {
           {/* Outcome */}
           {outcome && (
             <div className="rounded-lg p-3" style={{
-              backgroundColor: lastActionType === 'utility' ? 'rgba(0,204,102,0.08)' : `${getOutcomeColor(diceRoll)}15`,
-              borderLeft: `3px solid ${lastActionType === 'utility' ? 'var(--color-accent)' : getOutcomeColor(diceRoll)}`,
+              backgroundColor: lastActionType === 'enemy' ? 'rgba(192,57,43,0.1)' : lastActionType === 'utility' ? 'rgba(0,204,102,0.08)' : `${getOutcomeColor(diceRoll, lastActionType)}15`,
+              borderLeft: `3px solid ${getOutcomeColor(diceRoll, lastActionType)}`,
             }}>
-              {diceRoll && lastActionType === 'combat' && <span className="text-xs font-bold" style={{ color: getOutcomeColor(diceRoll) }}>d20: {diceRoll} &middot; </span>}
-              <span className="text-sm">{outcome}</span>
+              {diceRoll && lastActionType === 'combat' && <span className="text-xs font-bold" style={{ color: getOutcomeColor(diceRoll, lastActionType) }}>d20: {diceRoll} &middot; </span>}
+              {lastActionType === 'enemy' && <span className="text-xs font-bold" style={{ color: '#c0392b' }}>MONSTER ATTACKS &middot; </span>}
+              <span className="text-sm" style={{ whiteSpace: 'pre-line' }}>{outcome}</span>
             </div>
           )}
 
-          {enemyDefeated && !allDead ? (
-            <div className="space-y-2">
-              <p className="text-center font-bold" style={{ color: 'var(--color-accent)' }}>Enemy Defeated!</p>
-              <button onClick={() => advanceToNextTurn(session)} className="w-full py-3 font-bold rounded-lg" style={{ backgroundColor: 'var(--color-primary)', color: 'white' }}>
-                {resolved + 1 >= session.maxTurns ? 'See Summary' : 'Next Encounter'}
-              </button>
+          {/* ---- NON-COMBAT ENCOUNTER UI ---- */}
+          {!isCombat && !allDead && (
+            <div className="space-y-3">
+              {/* SHOP */}
+              {isShop && (
+                <div className="space-y-2">
+                  <p className="text-xs text-center" style={{ color: 'var(--color-text-muted)' }}>Gold: <strong style={{ color: '#FFD700' }}>{session.gold}g</strong> &middot; Potions: <strong>{session.potions}</strong></p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onClick={handleShopBuyPotion} disabled={session.gold < 10}
+                      className="py-2 rounded-lg text-xs font-bold"
+                      style={{ backgroundColor: session.gold >= 10 ? 'rgba(255,215,0,0.15)' : 'var(--color-surface-light)', color: session.gold >= 10 ? '#FFD700' : 'var(--color-border)', border: '1px solid rgba(255,215,0,0.3)' }}>
+                      Buy Potion (10g)
+                    </button>
+                    <button onClick={handleShopRepair} disabled={session.gold < 5}
+                      className="py-2 rounded-lg text-xs font-bold"
+                      style={{ backgroundColor: session.gold >= 5 ? 'rgba(0,204,102,0.12)' : 'var(--color-surface-light)', color: session.gold >= 5 ? 'var(--color-accent)' : 'var(--color-border)', border: '1px solid rgba(0,204,102,0.3)' }}>
+                      Repair Armor +5HP (5g)
+                    </button>
+                  </div>
+                  <button onClick={() => advanceToNextTurn(session)} className="w-full py-3 font-bold rounded-lg"
+                    style={{ backgroundColor: 'var(--color-primary)', color: 'white' }}>
+                    Leave Shop & Continue
+                  </button>
+                </div>
+              )}
+
+              {/* PUZZLE */}
+              {isPuzzle && (
+                <div className="space-y-2">
+                  <div>
+                    <label className="block text-xs font-semibold mb-1" style={{ color: 'var(--color-text-muted)' }}>Your solution / approach:</label>
+                    <textarea value={puzzleInput} onChange={e => setPuzzleInput(e.target.value)} rows={2}
+                      placeholder="Describe how you solve or bypass the puzzle..." />
+                  </div>
+                  <button onClick={handlePuzzleSolve} disabled={!puzzleInput.trim() || rolling}
+                    className="w-full py-3 font-bold rounded-lg"
+                    style={{ backgroundColor: puzzleInput.trim() && !rolling ? 'cornflowerblue' : 'var(--color-border)', color: 'white' }}>
+                    {rolling ? `Rolling... ${diceRoll}` : 'Roll d20 & Attempt Puzzle'}
+                  </button>
+                  <button onClick={() => advanceToNextTurn(session)} className="w-full py-2 rounded-lg text-sm"
+                    style={{ backgroundColor: 'var(--color-surface-light)', color: 'var(--color-text-muted)' }}>
+                    Skip Puzzle & Continue
+                  </button>
+                </div>
+              )}
+
+              {/* QUEST */}
+              {isQuest && (
+                <div className="space-y-2">
+                  {questReward === 0 ? (
+                    <button onClick={() => handleQuestComplete(currentQuestData?.reward ?? 15)}
+                      className="w-full py-3 font-bold rounded-lg"
+                      style={{ backgroundColor: 'rgba(0,204,102,0.15)', color: 'var(--color-accent)', border: '1px solid rgba(0,204,102,0.4)' }}>
+                      Complete Quest &amp; Collect Reward ({currentQuestData?.reward ?? 15}g)
+                    </button>
+                  ) : (
+                    <p className="text-center text-sm font-bold" style={{ color: 'var(--color-accent)' }}>
+                      Quest complete! +{questReward}g collected.
+                    </p>
+                  )}
+                  <button onClick={() => advanceToNextTurn(session)} className="w-full py-3 font-bold rounded-lg"
+                    style={{ backgroundColor: 'var(--color-primary)', color: 'white' }}>
+                    Continue Adventure
+                  </button>
+                </div>
+              )}
+
+              {/* REST */}
+              {isRest && (
+                <div className="space-y-2">
+                  <div className="rounded-lg p-3 text-center" style={{ backgroundColor: 'rgba(64,196,99,0.1)', border: '1px solid rgba(64,196,99,0.3)' }}>
+                    <p className="text-sm font-bold" style={{ color: '#3a9e3a' }}>All characters have been healed!</p>
+                    <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                      {session.characters.filter(c => c.alive).map(c => `${c.name}: ${c.hp}/${c.maxHp} HP`).join(' · ')}
+                    </p>
+                  </div>
+                  <button onClick={() => advanceToNextTurn(session)} className="w-full py-3 font-bold rounded-lg"
+                    style={{ backgroundColor: 'var(--color-primary)', color: 'white' }}>
+                    Continue Adventure
+                  </button>
+                </div>
+              )}
             </div>
-          ) : !allDead && (
+          )}
+
+          {/* ---- COMBAT UI ---- */}
+          {isCombat && (
             <>
-              {/* Active character indicator */}
-              <p className="text-xs text-center" style={{ color: 'var(--color-accent)' }}>
-                Acting as: <strong>{aliveChars.find(c => c.id === activeChar)?.name || aliveChars[0]?.name}</strong>
-                {aliveChars.length > 1 && ' (tap a character above to switch)'}
-              </p>
+              {enemyDefeated && !allDead ? (
+                <div className="space-y-2">
+                  <p className="text-center font-bold" style={{ color: 'var(--color-accent)' }}>Enemy Defeated!</p>
+                  <button onClick={() => advanceToNextTurn(session)} className="w-full py-3 font-bold rounded-lg" style={{ backgroundColor: 'var(--color-primary)', color: 'white' }}>
+                    {resolved + 1 >= session.maxTurns ? 'See Summary' : 'Next Encounter'}
+                  </button>
+                </div>
+              ) : !allDead && (
+                <>
+                  {/* Active character indicator */}
+                  <p className="text-xs text-center" style={{ color: 'var(--color-accent)' }}>
+                    Acting as: <strong>{aliveChars.find(c => c.id === activeChar)?.name || aliveChars[0]?.name}</strong>
+                    {aliveChars.length > 1 && ' (tap a character above to switch)'}
+                  </p>
 
-              {/* Quick actions */}
-              <div className="grid grid-cols-4 gap-1.5">
-                <button onClick={() => quickAction('look')} className="py-2 rounded-lg text-xs font-bold"
-                  style={{ backgroundColor: 'var(--color-surface-light)', color: 'cornflowerblue', border: '1px solid rgba(100,149,237,0.2)' }}>Look</button>
-                <button onClick={() => quickAction('potion')} disabled={session.potions <= 0}
-                  className="py-2 rounded-lg text-xs font-bold"
-                  style={{ backgroundColor: 'var(--color-surface-light)', color: session.potions > 0 ? '#3a9e3a' : 'var(--color-border)' }}>Potion({session.potions})</button>
-                <button onClick={() => quickAction('power')} className="py-2 rounded-lg text-xs font-bold"
-                  style={{ backgroundColor: 'var(--color-surface-light)', color: '#FFD700' }}>Power Up</button>
-                <button onClick={() => quickAction('dodge')} className="py-2 rounded-lg text-xs font-bold"
-                  style={{ backgroundColor: 'var(--color-surface-light)', color: 'var(--color-warning)' }}>Dodge</button>
-              </div>
+                  {/* Quick actions */}
+                  <div className="grid grid-cols-4 gap-1.5">
+                    <button onClick={() => quickAction('look')} className="py-2 rounded-lg text-xs font-bold"
+                      style={{ backgroundColor: 'var(--color-surface-light)', color: 'cornflowerblue', border: '1px solid rgba(100,149,237,0.2)' }}>Look</button>
+                    <button onClick={() => quickAction('potion')} disabled={session.potions <= 0}
+                      className="py-2 rounded-lg text-xs font-bold"
+                      style={{ backgroundColor: 'var(--color-surface-light)', color: session.potions > 0 ? '#3a9e3a' : 'var(--color-border)' }}>Potion({session.potions})</button>
+                    <button onClick={() => quickAction('power')} className="py-2 rounded-lg text-xs font-bold"
+                      style={{ backgroundColor: 'var(--color-surface-light)', color: '#FFD700' }}>Power Up</button>
+                    <button onClick={() => quickAction('dodge')} className="py-2 rounded-lg text-xs font-bold"
+                      style={{ backgroundColor: 'var(--color-surface-light)', color: 'var(--color-warning)' }}>Dodge</button>
+                  </div>
 
-              {/* Action input */}
-              <div>
-                <textarea value={playerAction} onChange={e => setPlayerAction(e.target.value)} rows={2}
-                  placeholder={`What does ${aliveChars.find(c => c.id === activeChar)?.name || 'the player'} do?`} />
-              </div>
-              <button onClick={handleRollAndResolve} disabled={!playerAction.trim() || rolling}
-                className="w-full py-3 font-bold rounded-lg"
-                style={{ backgroundColor: playerAction.trim() && !rolling ? 'var(--color-accent)' : 'var(--color-border)', color: 'var(--color-bg)' }}>
-                {rolling ? `Rolling... ${diceRoll}` : 'Roll d20 & Act'}
-              </button>
+                  {/* Action input */}
+                  <div>
+                    <textarea value={playerAction} onChange={e => setPlayerAction(e.target.value)} rows={2}
+                      placeholder={`What does ${aliveChars.find(c => c.id === activeChar)?.name || 'the player'} do?`} />
+                  </div>
+                  <button onClick={handleRollAndResolve} disabled={!playerAction.trim() || rolling}
+                    className="w-full py-3 font-bold rounded-lg"
+                    style={{ backgroundColor: playerAction.trim() && !rolling ? 'var(--color-accent)' : 'var(--color-border)', color: 'var(--color-bg)' }}>
+                    {rolling ? `Rolling... ${diceRoll}` : 'Roll d20 & Act'}
+                  </button>
+                </>
+              )}
             </>
           )}
         </div>
