@@ -1,7 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
-  <polygon points="24,2 44,14 44,34 24,46 4,34 4,14" fill="#7c3aed" stroke="#6d28d9" stroke-width="2"/>
-  <polygon points="24,2 44,14 24,18 4,14" fill="#9333ea" stroke="#6d28d9" stroke-width="1"/>
-  <polygon points="4,14 24,18 24,46 4,34" fill="#6d28d9" stroke="#5b21b6" stroke-width="1"/>
-  <polygon points="44,14 24,18 24,46 44,34" fill="#7c3aed" stroke="#6d28d9" stroke-width="1"/>
-  <text x="24" y="36" text-anchor="middle" font-family="Arial,sans-serif" font-weight="bold" font-size="16" fill="white">20</text>
+  <!-- D20 shape - dark green -->
+  <polygon points="24,1 45,13 45,35 24,47 3,35 3,13" fill="#1a3a1a" stroke="#2d6e2d" stroke-width="1.5"/>
+  <polygon points="24,1 45,13 24,19 3,13" fill="#2d6e2d" stroke="#1a3a1a" stroke-width="0.5"/>
+  <polygon points="3,13 24,19 24,47 3,35" fill="#1a3a1a" stroke="#0d1f0d" stroke-width="0.5"/>
+  <polygon points="45,13 24,19 24,47 45,35" fill="#234a23" stroke="#1a3a1a" stroke-width="0.5"/>
+  <!-- Dragon silhouette -->
+  <g transform="translate(12, 8) scale(0.5)">
+    <!-- Dragon head -->
+    <path d="M24,8 L28,4 L30,6 L32,3 L33,7 L36,6 L34,10 L38,12 L34,14 L36,18 L32,16 L30,20 L28,16 L24,18 L26,14 L22,12 L26,10 L24,8Z" fill="#00cc66" opacity="0.9"/>
+    <!-- Dragon wing left -->
+    <path d="M20,14 L8,8 L10,14 L4,12 L12,18 L6,20 L16,22 L20,18Z" fill="#00cc66" opacity="0.6"/>
+    <!-- Dragon wing right -->
+    <path d="M28,14 L40,8 L38,14 L44,12 L36,18 L42,20 L32,22 L28,18Z" fill="#00cc66" opacity="0.6"/>
+  </g>
+  <!-- 20 text -->
+  <text x="24" y="39" text-anchor="middle" font-family="Arial,sans-serif" font-weight="900" font-size="14" fill="#00cc66" opacity="0.9">20</text>
 </svg>
