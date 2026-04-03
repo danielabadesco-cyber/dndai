@@ -1,0 +1,213 @@
+@import "tailwindcss";
+
+:root {
+  --color-primary: #2d6e2d;
+  --color-primary-dark: #1f5c1f;
+  --color-danger: #8b4513;
+  --color-success: #3a9e3a;
+  --color-warning: #b5a36a;
+  --color-accent: #00cc66;
+  --color-bg: #0d0d0d;
+  --color-surface: #161616;
+  --color-surface-light: #1e1e1e;
+  --color-text: #c8f0c8;
+  --color-text-muted: #5a9a5a;
+  --color-border: #2a4a2a;
+  --font-heading: 'Cinzel Decorative', 'Cinzel', serif;
+  --font-body: 'Rajdhani', sans-serif;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-weight: 500;
+  font-size: 1.05rem;
+  min-height: 100dvh;
+  overflow-y: auto;
+}
+
+#root {
+  min-height: 100dvh;
+  overflow-y: auto;
+}
+
+html {
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Input effects */
+input, textarea, select {
+  background-color: var(--color-surface-light);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 0.375rem;
+  padding: 0.625rem 0.75rem;
+  font-size: 1rem;
+  font-family: var(--font-body);
+  width: 100%;
+  outline: none;
+  transition: border-color 0.3s, box-shadow 0.3s, background-color 0.3s;
+  caret-color: var(--color-accent);
+}
+
+input:hover, textarea:hover, select:hover {
+  border-color: var(--color-text-muted);
+  background-color: #1a2a1a;
+}
+
+input:focus, textarea:focus, select:focus {
+  border-color: var(--color-accent);
+  background-color: #0d1a0d;
+  box-shadow: 0 0 12px rgba(0, 204, 102, 0.25), inset 0 0 6px rgba(0, 204, 102, 0.06);
+}
+
+/* Typing indicator: pulsing border while focused */
+@keyframes typingPulse {
+  0%, 100% { border-color: var(--color-accent); }
+  50% { border-color: rgba(0, 204, 102, 0.4); }
+}
+
+input:focus:not(:placeholder-shown),
+textarea:focus:not(:placeholder-shown) {
+  animation: typingPulse 1.5s ease-in-out infinite;
+}
+
+/* Placeholder style */
+input::placeholder, textarea::placeholder {
+  color: var(--color-text-muted);
+  opacity: 0.5;
+  transition: opacity 0.2s;
+}
+
+input:focus::placeholder, textarea:focus::placeholder {
+  opacity: 0.3;
+}
+
+/* Button effects */
+button {
+  cursor: pointer;
+  font-size: 1rem;
+  font-family: var(--font-body);
+  font-weight: 600;
+  border: none;
+  border-radius: 0.375rem;
+  padding: 0.625rem 1.25rem;
+  transition: transform 0.15s ease, box-shadow 0.25s ease, background-color 0.2s, opacity 0.2s, filter 0.2s;
+  letter-spacing: 0.02em;
+  position: relative;
+  overflow: hidden;
+}
+
+button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 204, 102, 0.2);
+  filter: brightness(1.1);
+}
+
+button:active {
+  transform: translateY(0px) scale(0.95);
+  box-shadow: 0 1px 4px rgba(0, 204, 102, 0.1);
+  filter: brightness(0.95);
+  opacity: 0.9;
+}
+
+/* Ripple expand on click */
+button::after {
+  content: '';
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  background: radial-gradient(circle, rgba(255,255,255,0.25) 0%, transparent 70%);
+  transform: scale(0);
+  opacity: 0;
+  transition: transform 0.5s ease, opacity 0.5s ease;
+  pointer-events: none;
+}
+
+button:active::after {
+  transform: scale(2.5);
+  opacity: 1;
+  transition: transform 0s, opacity 0s;
+}
+
+/* Shine sweep on hover */
+button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+  transition: left 0.5s ease;
+  pointer-events: none;
+}
+
+button:hover::before {
+  left: 120%;
+}
+
+/* Cards: hover lift + border glow */
+.card-hover {
+  transition: transform 0.2s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(0, 204, 102, 0.12);
+  border-color: rgba(0, 204, 102, 0.3) !important;
+}
+
+.card-hover:active {
+  transform: translateY(-1px) scale(0.99);
+}
+
+/* Fade-in animation for page content */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-in {
+  animation: fadeInUp 0.35s ease-out both;
+}
+
+/* Staggered children animation */
+.stagger-in > * {
+  animation: fadeInUp 0.3s ease-out both;
+}
+.stagger-in > *:nth-child(1) { animation-delay: 0.03s; }
+.stagger-in > *:nth-child(2) { animation-delay: 0.06s; }
+.stagger-in > *:nth-child(3) { animation-delay: 0.09s; }
+.stagger-in > *:nth-child(4) { animation-delay: 0.12s; }
+.stagger-in > *:nth-child(5) { animation-delay: 0.15s; }
+.stagger-in > *:nth-child(6) { animation-delay: 0.18s; }
+.stagger-in > *:nth-child(7) { animation-delay: 0.21s; }
+.stagger-in > *:nth-child(8) { animation-delay: 0.24s; }
+.stagger-in > *:nth-child(9) { animation-delay: 0.27s; }
+.stagger-in > *:nth-child(10) { animation-delay: 0.30s; }
+
+/* Subtle green glow pulse for accent elements */
+@keyframes glowPulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(0, 204, 102, 0.15); }
+  50% { box-shadow: 0 0 16px rgba(0, 204, 102, 0.3); }
+}
+
+.glow-pulse {
+  animation: glowPulse 3s ease-in-out infinite;
+}
