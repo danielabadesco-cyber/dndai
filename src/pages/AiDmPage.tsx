@@ -49,8 +49,16 @@ interface AiDmSession {
 const AIDM_KEY = 'dndai_aidm_sessions';
 
 function getSessions(): AiDmSession[] {
-  const data = localStorage.getItem(AIDM_KEY);
-  return data ? JSON.parse(data) : [];
+  try {
+    const data = localStorage.getItem(AIDM_KEY);
+    if (!data) return [];
+    const sessions = JSON.parse(data);
+    // Validate sessions have the new format (characters array)
+    return sessions.filter((s: AiDmSession) => Array.isArray(s.characters));
+  } catch {
+    localStorage.removeItem(AIDM_KEY);
+    return [];
+  }
 }
 function saveSession(session: AiDmSession) {
   const sessions = getSessions();
@@ -520,7 +528,7 @@ export default function AiDmPage() {
             <div className="mb-3">
               <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--color-text-muted)' }}>Difficulty</label>
               <div className="flex gap-2">
-                {([['easy', '🟢 Easy', 'Less damage, forgiving'], ['medium', '🟡 Medium', 'Balanced challenge'], ['hard', '🔴 Hard', 'Brutal. No mercy.']] as const).map(([d, label, desc]) => (
+                {([['easy', 'Easy', 'Less damage, forgiving'] as const, ['medium', 'Medium', 'Balanced challenge'] as const, ['hard', 'Hard', 'Brutal. No mercy.'] as const]).map(([d, label, desc]) => (
                   <button key={d} onClick={() => setDifficulty(d)} className="flex-1 py-2 rounded-lg text-center"
                     style={{ backgroundColor: difficulty === d ? 'var(--color-primary)' : 'var(--color-surface-light)', color: difficulty === d ? 'white' : 'var(--color-text-muted)' }}>
                     <div className="font-bold text-xs">{label}</div>

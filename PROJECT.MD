@@ -103,4 +103,3 @@ Each character has:
 - Gold  
 - XP  
 - Custom stats  
-

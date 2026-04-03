@@ -50,7 +50,6 @@
 - [x] Story progress tracking
 - [x] Custom outcome recording
 **Status:** COMPLETE
-
 ## Task 9: UX Improvements
 - [x] Add Home button on all inner pages (header)
 - [x] Move 3 creation buttons (AI, Pre-Made, Custom) to dashboard/home page
@@ -59,7 +58,7 @@
 - [x] Editable campaign fields (World, Story, Conflict, Tone) with Save/Cancel
 - [x] Color palette: techno-fantasy green theme with Cinzel Decorative + Rajdhani fonts
 **Status:** COMPLETE
-
+ 
 ## Task 10: Progression Helper (v2 - Rewritten)
 - [x] Storyline base as foundation/instructions for generation
 - [x] Outcomes describe what the players' ACTIONS specifically cause
